@@ -2,6 +2,7 @@
 package com.example.roomie
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,7 +19,11 @@ import com.example.roomie.ui.theme.RoomieTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
+import com.example.roomie.screens.HomeScreen
+import com.example.roomie.screens.CreateTaskScreen
 import androidx.compose.material3.Text // <-- Asegúrate de importar Text si usas un placeholder
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 class MainActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
@@ -74,6 +79,29 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    composable(
+                        route = "piso_home/{pisoId}",
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoId = backStackEntry.arguments?.getString("pisoId")
+                        if (pisoId != null && auth.currentUser != null) {
+                            Log.d("MainActivity", "Displaying HomeScreen for pisoId: $pisoId")
+                            // --- Pasa navController y pisoId a HomeScreen ---
+                            HomeScreen(
+                                navController = navController, // Pasar el NavController
+                                pisoId = pisoId                // Pasar el pisoId extraído
+                            )
+                            // --- Fin Pasar ---
+                        } else {
+                            Log.w("MainActivity", "PisoId is null or user not logged in, redirecting to login")
+                            LaunchedEffect(Unit) {
+                                navController.navigate("login") {
+                                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                                }
+                            }
+                        }
+                    }
+
                     composable("profile") {
                         // Asegúrate de que el usuario esté autenticado para ver el perfil
                         if (auth.currentUser == null) {
@@ -94,7 +122,10 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onNavigateToJoinPiso = { navController.navigate("join_piso") },
-                                onNavigateToCreatePiso = { navController.navigate("create_piso") }
+                                onNavigateToCreatePiso = { navController.navigate("create_piso") },
+                                onNavigateToPisoHome = { pisoId ->
+                                    navController.navigate("piso_home/$pisoId")
+                                }
                             )
                         }
                     }
@@ -112,6 +143,25 @@ class MainActivity : ComponentActivity() {
                                 auth = auth,
                                 navController = navController
                             )
+                        }
+                    }
+
+                    composable(
+                        route = "create_task/{pisoId}", // Ruta que espera el ID del piso
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoId = backStackEntry.arguments?.getString("pisoId")
+                        val creatorUid = auth.currentUser?.uid // Obtener UID del usuario actual
+                        if (pisoId != null && creatorUid != null) {
+                            CreateTaskScreen(
+                                navController = navController,
+                                pisoId = pisoId,
+                                creatorUid = creatorUid
+                            )
+                        } else {
+                            // Redirigir o mostrar error si falta pisoId o el usuario no está logueado
+                            Log.e("Nav", "Cannot navigate to CreateTaskScreen: pisoId=$pisoId, creatorUid=$creatorUid")
+                            // Quizás navController.popBackStack() o navegar a login
                         }
                     }
 

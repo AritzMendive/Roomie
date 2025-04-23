@@ -26,7 +26,8 @@ fun ProfileScreen(
     auth: FirebaseAuth,
     onLogout: () -> Unit,
     onNavigateToJoinPiso: () -> Unit,
-    onNavigateToCreatePiso: () -> Unit
+    onNavigateToCreatePiso: () -> Unit,
+    onNavigateToPisoHome: (pisoId: String) -> Unit
 ) {
     val currentUser = auth.currentUser
     val username = currentUser?.displayName
@@ -135,30 +136,28 @@ fun ProfileScreen(
 
             // --- Botón/Indicador del piso actual (AHORA MUESTRA EL NOMBRE) ---
             Button(
-                onClick = { /* Acción al pulsar el nombre del piso (si la hay) */ },
+                onClick = { pisoId?.let { onNavigateToPisoHome(it) } },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    // Mantenemos la lógica del color basada en si tiene un piso asignado (pisoId)
                     containerColor = if (pisoId != null) Color(0xFFF0B90B) else Color.Gray,
                     contentColor = Color.Black
                 ),
-                enabled = pisoId != null // Quizás habilitado solo si tiene piso
+                enabled = pisoId != null // Botón habilitado solo si está en un piso
             ) {
-                // --- Lógica de Texto Modificada ---
                 val buttonText = when {
-                    isLoadingPisoName -> "Cargando nombre..." // Muestra cargando mientras busca el nombre
-                    pisoName != null -> pisoName // Muestra el nombre si se encontró
-                    pisoId != null -> "Piso sin nombre (ID: $pisoId)" // Si tiene ID pero no nombre
-                    else -> "No estás en ningún piso" // Si no tiene ID
+                    isLoadingPisoName -> "Cargando nombre..."
+                    pisoName != null -> pisoName
+                    pisoId != null -> "Ir al Piso (ID: ...)" // Texto alternativo si no hay nombre
+                    else -> "No estás en ningún piso"
                 }
                 Text(
                     text = buttonText.toString(),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
-                // --- Fin Lógica de Texto ---
             }
+
 
 
             Spacer(modifier = Modifier.height(32.dp))

@@ -6,4 +6,7 @@
     <string name="title_activity_profile_screen">ProfileScreen</string>
     <string name="title_activity_join_piso_screen">JoinPisoScreen</string>
     <string name="title_activity_create_piso_screen">CreatePisoScreen</string>
+    <string name="title_activity_home_screen">HomeScreen</string>
+    <string name="title_activity_create_task_screen">CreateTaskScreen</string>
+    <string name="title_activity_task_list_screen">TaskListScreen</string>
 </resources>
