@@ -1,152 +1,136 @@
+// MainActivity.kt
 package com.example.roomie
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.roomie.screens.LoginScreen
+import com.example.roomie.screens.ProfileScreen
+import com.example.roomie.screens.RegisterScreen
+import com.example.roomie.screens.JoinPisoScreen // <-- Importa la nueva pantalla
+import com.example.roomie.screens.CreatePisoScreen // <-- Descomenta si creas esta pantalla
 import com.example.roomie.ui.theme.RoomieTheme
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
+import androidx.compose.material3.Text // <-- Asegúrate de importar Text si usas un placeholder
 
 class MainActivity : ComponentActivity() {
+    private lateinit var auth: FirebaseAuth
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        auth = Firebase.auth // Inicializa FirebaseAuth
+
         setContent {
             RoomieTheme {
-                LoginScreen()
-            }
-        }
-    }
-}
+                val navController = rememberNavController() // Inicializa NavController
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginScreen() {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
+                // Comprueba el estado de autenticación inicial (opcional pero recomendado)
+                // Podrías querer navegar directamente a "profile" si el usuario ya está logueado.
+                // val startDestination = if (auth.currentUser != null) "profile" else "login"
+                val startDestination = "login" // O mantener login como inicio siempre
 
-    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF1E1E1E)) { // Fondo oscuro
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 32.dp), // Mayor padding horizontal
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically) // Espacio entre elementos
-        ) {
-            // Logo
-            Image(
-                painter = painterResource(id = R.drawable.roomie_logo), // Reemplaza con tu logo
-                contentDescription = "Roomie Logo",
-                modifier = Modifier.size(120.dp) // Ajusta el tamaño del logo
-            )
+                NavHost(navController = navController, startDestination = startDestination) {
 
-            Text(
-                text = "Inicia sesión",
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 16.dp)
-            )
-
-            // Email TextField
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Loisbecket@gmail.com", color = Color.Gray) }, // Placeholder como label
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Filled.MailOutline, contentDescription = "Email", tint = Color.Gray) },
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    textColor = Color.White,
-                    focusedBorderColor = Color(0xFFF0B90B), // Amarillo
-                    unfocusedBorderColor = Color.Gray,
-                    cursorColor = Color(0xFFF0B90B)
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Email,
-                    imeAction = ImeAction.Next
-                )
-            )
-
-            // Password TextField
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("********", color = Color.Gray) }, // Placeholder como label
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = "Password", tint = Color.Gray) },
-                trailingIcon = {
-                    val icon = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(icon, contentDescription = "Toggle password visibility", tint = Color.Gray)
+                    composable("login") {
+                        // Si el usuario ya está logueado, redirige a profile inmediatamente
+                        // Esto evita ver la pantalla de login brevemente si ya hay sesión.
+                        if (auth.currentUser != null) {
+                            LaunchedEffect(Unit) { // Evita llamadas múltiples
+                                navController.navigate("profile") {
+                                    popUpTo("login") { inclusive = true }
+                                }
+                            }
+                        } else {
+                            LoginScreen(
+                                auth = auth,
+                                onNavigateToRegister = { navController.navigate("register") },
+                                onLoginSuccess = {
+                                    // Navega a profile limpiando el stack hasta login
+                                    navController.navigate("profile") {
+                                        popUpTo("login") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
                     }
-                },
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    textColor = Color.White,
-                    focusedBorderColor = Color(0xFFF0B90B), // Amarillo
-                    unfocusedBorderColor = Color.Gray,
-                    cursorColor = Color(0xFFF0B90B)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
 
-            // Forgot Password
-            TextButton(onClick = {
-                // Aquí iría la lógica para "Forgot Your Password?"
-                Log.d("LoginScreen", "Forgot Your Password?")
-            }) {
-                Text("Forgot Your Password ?", color = Color.Gray)
-            }
+                    composable("register") {
+                        RegisterScreen(
+                            auth = auth,
+                            onNavigateToLogin = {
+                                // Vuelve a login, limpiando el stack para no volver a register
+                                navController.navigate("login") {
+                                    popUpTo("login") { inclusive = true }
+                                }
+                            }
+                        )
+                    }
 
-            // Login Button
-            Button(
-                onClick = {
-                    // Aquí iría la lógica de autenticación
-                    Log.d("LoginScreen", "Iniciar sesión con: $email, $password")
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0B90B)) // Botón amarillo
-            ) {
-                Text("Iniciar sesión", color = Color.Black, fontSize = 16.sp)
+                    composable("profile") {
+                        // Asegúrate de que el usuario esté autenticado para ver el perfil
+                        if (auth.currentUser == null) {
+                            // Si por alguna razón llega aquí sin estar logueado, vuelve a login
+                            LaunchedEffect(Unit) {
+                                navController.navigate("login") {
+                                    popUpTo("profile") { inclusive = true }
+                                }
+                            }
+                        } else {
+                            ProfileScreen(
+                                auth = auth,
+                                onLogout = {
+                                    // Cierra sesión y vuelve a login, limpiando el stack
+                                    auth.signOut() // Asegúrate que signOut se llama antes de navegar
+                                    navController.navigate("login") {
+                                        popUpTo("profile") { inclusive = true }
+                                    }
+                                },
+                                onNavigateToJoinPiso = { navController.navigate("join_piso") },
+                                onNavigateToCreatePiso = { navController.navigate("create_piso") }
+                            )
+                        }
+                    }
+
+                    composable("join_piso") {
+                        // Solo accesible si está logueado
+                        if (auth.currentUser == null) {
+                            LaunchedEffect(Unit) {
+                                navController.navigate("login") {
+                                    popUpTo("join_piso") { inclusive = true }
+                                }
+                            }
+                        } else {
+                            JoinPisoScreen(
+                                auth = auth,
+                                navController = navController
+                            )
+                        }
+                    }
+
+                    // Ruta placeholder para la pantalla de crear piso
+                    composable("create_piso") {
+                        if (auth.currentUser == null) {
+                            LaunchedEffect(Unit) {
+                                navController.navigate("login") {
+                                    popUpTo("create_piso") { inclusive = true }
+                                }
+                            }
+                        } else {
+                            // Reemplaza esto con tu pantalla real cuando la tengas
+                            // CreatePisoScreen(auth = auth, navController = navController)
+                            CreatePisoScreen(auth = auth, navController = navController) // Placeholder
+                        }
+                    }
+                }
             }
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LoginScreenPreview() {
-    RoomieTheme {
-        LoginScreen()
     }
 }

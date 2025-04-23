@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "899357821097",
+    "project_id": "roomie-e40ec",
+    "storage_bucket": "roomie-e40ec.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899357821097:android:0b6af612d94277b7aa41b8",
+        "android_client_info": {
+          "package_name": "com.example.roomie"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHDPYSt3xHPJp5OKh1a_d6UrH82SVa6Lc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

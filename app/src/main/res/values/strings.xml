@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">Roomie</string>
+    <string name="title_activity_register_page">RegisterPage</string>
+    <string name="title_activity_register_screen">RegisterScreen</string>
+    <string name="title_activity_login_screen">LoginScreen</string>
+    <string name="title_activity_profile_screen">ProfileScreen</string>
+    <string name="title_activity_join_piso_screen">JoinPisoScreen</string>
+    <string name="title_activity_create_piso_screen">CreatePisoScreen</string>
 </resources>
