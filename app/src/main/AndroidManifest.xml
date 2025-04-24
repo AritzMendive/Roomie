@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -16,47 +17,56 @@
             android:name=".screens.TaskListScreen"
             android:exported="false"
             android:label="@string/title_activity_task_list_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass" />
         <activity
             android:name=".screens.CreateTaskScreen"
             android:exported="false"
             android:label="@string/title_activity_create_task_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass" />
         <activity
             android:name=".screens.HomeScreen"
             android:exported="false"
             android:label="@string/title_activity_home_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass" />
         <activity
             android:name=".screens.CreatePisoScreen"
             android:exported="false"
             android:label="@string/title_activity_create_piso_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass" />
         <activity
             android:name=".screens.JoinPisoScreen"
             android:exported="false"
             android:label="@string/title_activity_join_piso_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass"/>
         <activity
             android:name=".screens.ProfileScreen"
             android:exported="false"
             android:label="@string/title_activity_profile_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass"/>
         <activity
             android:name=".screens.LoginScreen"
             android:exported="false"
             android:label="@string/title_activity_login_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass"/>
         <activity
             android:name=".screens.RegisterScreen"
             android:exported="false"
             android:label="@string/title_activity_register_screen"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass"/>
         <activity
             android:name=".RegisterPage"
             android:exported="false"
             android:label="@string/title_activity_register_page"
-            android:theme="@style/Theme.Roomie" />
+            android:theme="@style/Theme.Roomie"
+            tools:ignore="MissingClass"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
