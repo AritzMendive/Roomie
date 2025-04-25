@@ -21,6 +21,7 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
 import com.example.roomie.screens.HomeScreen
 import com.example.roomie.screens.CreateTaskScreen
+import com.example.roomie.screens.ChatScreen // <-- AÑADE ESTA LÍNEA
 import androidx.compose.material3.Text // <-- Asegúrate de importar Text si usas un placeholder
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -89,7 +90,15 @@ class MainActivity : ComponentActivity() {
                             // --- Pasa navController y pisoId a HomeScreen ---
                             HomeScreen(
                                 navController = navController, // Pasar el NavController
-                                pisoId = pisoId                // Pasar el pisoId extraído
+                                pisoId = pisoId,               // Pasar el pisoId extraído
+                                auth = auth,                   // <-- AÑADIR: Pasar la instancia auth de MainActivity
+                                onLogout = {                   // <-- AÑADIR: Definir la acción de logout
+                                    auth.signOut()
+                                    navController.navigate("login") {
+                                        popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                }
                             )
                             // --- Fin Pasar ---
                         } else {
@@ -179,6 +188,34 @@ class MainActivity : ComponentActivity() {
                             CreatePisoScreen(auth = auth, navController = navController) // Placeholder
                         }
                     }
+                    // Dentro del NavHost en MainActivity.kt
+
+// ... otras rutas como login, register, profile, piso_home, etc.
+
+                    composable(
+                        route = "chat/{pisoId}",
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoId = backStackEntry.arguments?.getString("pisoId")
+                        if (pisoId != null && auth.currentUser != null) {
+                            Log.d("MainActivity", "Navigating to ChatScreen for pisoId: $pisoId")
+                            ChatScreen(
+                                pisoId = pisoId,
+                                auth = auth,
+                                navController = navController // <-- ASEGÚRATE DE PASARLO AQUÍ
+                            )
+                        }  else {
+                            // Si falta el pisoId o el usuario no está logueado, volver
+                            Log.w("MainActivity", "Cannot open ChatScreen: Missing pisoId or user not logged in. Redirecting.")
+                            LaunchedEffect(Unit) {
+                                // Decide a dónde redirigir, por ejemplo, a 'profile' o 'login'
+                                navController.popBackStack() // Simplemente vuelve atrás
+                                // o navController.navigate("login") { popUpTo(...) }
+                            }
+                        }
+                    }
+
+// ... resto de las rutas
                 }
             }
         }

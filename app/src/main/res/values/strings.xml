@@ -9,4 +9,5 @@
     <string name="title_activity_home_screen">HomeScreen</string>
     <string name="title_activity_create_task_screen">CreateTaskScreen</string>
     <string name="title_activity_task_list_screen">TaskListScreen</string>
+    <string name="title_activity_chat_screen">ChatScreen</string>
 </resources>
