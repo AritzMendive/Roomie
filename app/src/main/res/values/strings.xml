@@ -10,4 +10,7 @@
     <string name="title_activity_create_task_screen">CreateTaskScreen</string>
     <string name="title_activity_task_list_screen">TaskListScreen</string>
     <string name="title_activity_chat_screen">ChatScreen</string>
+    <string name="title_activity_add_expense_screen">AddExpenseScreen</string>
+    <string name="title_activity_expenses_screen">ExpensesScreen</string>
+    <string name="title_activity_create_expense_screen">CreateExpenseScreen</string>
 </resources>

@@ -24,15 +24,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+// import androidx.compose.ui.window.Dialog // ChangeUsernameDialog está definido aquí
 import androidx.navigation.NavController
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.example.roomie.R // <-- ASEGÚRATE QUE ESTA IMPORTACIÓN ES CORRECTA
+import com.example.roomie.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
-import com.google.firebase.auth.ktx.auth
+// import com.google.firebase.auth.ktx.auth // No es necesario si se pasa auth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import io.ktor.client.*
@@ -41,7 +41,8 @@ import io.ktor.client.engine.okhttp.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.CoroutineScope
+// import kotlinx.coroutines.CoroutineScope // No se usa explícitamente aquí, se obtiene con rememberCoroutineScope
+// import kotlinx.coroutines.Job // No se usa explícitamente
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.SerialName
@@ -51,7 +52,7 @@ import okhttp3.ConnectionSpec
 import okhttp3.OkHttpClient
 import okhttp3.TlsVersion
 import java.util.*
-import java.util.Collections // Import necesario para Collections.singletonList
+import java.util.Collections
 
 // --- Definición de Rutas NavBar ---
 sealed class BottomNavItem(val route: String, val iconResId: Int, val label: String) {
@@ -98,110 +99,96 @@ data class MainInfo(
     @SerialName("humidity") val humidity: Int? = null
 )
 
-// --- Cliente Ktor (Ejemplo Básico) ---
-// Es mejor crear una instancia Singleton o inyectarla con Hilt/Koin
-// pero para este ejemplo lo ponemos aquí.
-val httpClient = HttpClient(OkHttp) { // Puedes cambiar CIO por OkHttp si prefieres
-    install(ContentNegotiation) {
-        json(Json {
-            ignoreUnknownKeys = true
-            isLenient = true
-            prettyPrint = true
-        })
+object NetworkClient {
+    val httpClient: HttpClient by lazy {
+        HttpClient(OkHttp) {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                    prettyPrint = true
+                })
+            }
+        }
     }
-    // Puedes añadir más configuración: timeouts, logging, etc.
 }
 
-// --- Función para obtener el tiempo (Ejemplo) ---
 suspend fun fetchWeatherByAddress(address: String): Result<OpenWeatherMapResponse> {
-    // ¡IMPORTANTE! Guarda tu API Key de forma segura, no la pongas aquí.
-    // Usa BuildConfig, Firebase Remote Config, o un backend.
-    val apiKey = "9aca4a0cb3121a434c2d4ac9d5566890" // <-- REEMPLAZA ESTO DE FORMA SEGURA
+    val apiKey = "9aca4a0cb3121a434c2d4ac9d5566890" // TU API KEY
     if (apiKey == "TU_API_KEY_DE_OPENWEATHERMAP" || apiKey.isBlank()) {
         return Result.failure(Exception("API Key no configurada"))
     }
-
     val formattedAddress = address.replace(" ", "+")
     val url = "https://api.openweathermap.org/data/2.5/weather"
     return try {
         Log.d("WeatherAPI", "Fetching weather for address: $formattedAddress")
-        val response: OpenWeatherMapResponse = httpClient.get(url){
+        val response: OpenWeatherMapResponse = NetworkClient.httpClient.get(url){
             parameter("q", formattedAddress)
             parameter("appid", apiKey)
             parameter("units", "metric")
             parameter("lang", "es")
         }.body()
         Log.d("WeatherAPI", "API Response: $response")
-        if (response.cod == 200) {
+        if (response.cod == 200 && response.weather != null && response.main != null) {
             Result.success(response)
         } else {
-            Result.failure(Exception(response.message ?: "Error API: ${response.cod}"))
+            Result.failure(Exception(response.message ?: "Error API: ${response.cod}, datos incompletos."))
         }
-    } catch (e: Exception) {
+    } catch (e: io.ktor.client.plugins.ClientRequestException) {
+        Log.e("WeatherAPI", "ClientRequestException fetching weather: ${e.response.status}", e)
+        Result.failure(Exception("Error de cliente: ${e.response.status.value}"))
+    }
+    catch (e: Exception) {
         Log.e("WeatherAPI", "Error fetching weather", e)
         Result.failure(e)
     }
 }
 
-
-// --- Composable Principal HomeScreen ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     navController: NavController,
     pisoId: String,
-    auth: FirebaseAuth,        // <-- Recibe FirebaseAuth
-    onLogout: () -> Unit       // <-- Recibe Callback para cerrar sesión
+    auth: FirebaseAuth,
+    onLogout: () -> Unit
 ) {
     val db = Firebase.firestore
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val currentUid = auth.currentUser?.uid
 
-    // --- Estados para el menú y diálogo ---
     var showProfileMenu by remember { mutableStateOf(false) }
     var showChangeUsernameDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // --- Estados para el tiempo ---
     var weatherInfo by remember { mutableStateOf<WeatherInfo?>(null) }
-    var weatherLoading by remember { mutableStateOf(false) }
+    var weatherLoading by remember { mutableStateOf(false) } // Cambio: iniciar en false si queremos mostrar datos cacheados primero
     var weatherError by remember { mutableStateOf<String?>(null) }
 
-    // Estado para la ruta seleccionada
     var selectedRoute by remember { mutableStateOf(BottomNavItem.Home.route) }
+    var isLoadingUser by remember { mutableStateOf(false) }
 
-    var isLoadingUser by remember { mutableStateOf(true) }
-    // Lista de items para la barra de navegación
     val items = listOf(
         BottomNavItem.Home, BottomNavItem.Tasks, BottomNavItem.Expenses, BottomNavItem.Chat, BottomNavItem.Shopping
     )
-    // Colores
     val navBarColor = Color(0xFF1A1A1A)
     val selectedIconColor = Color(0xFFF0B90B)
     val unselectedIconColor = Color.Gray
     val topAppBarColor = Color(0xFF1A1A1A)
 
-    // --- Ktor/Coil OkHttpClient con TLS (Mantenido por si acaso) ---
-    val customOkHttpClient = remember {
+    val coilImageLoader = remember {
         val spec = ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
             .tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2).build()
-        OkHttpClient.Builder().connectionSpecs(Collections.singletonList(spec)).build()
+        val okHttpClientForCoil = OkHttpClient.Builder()
+            .connectionSpecs(Collections.singletonList(spec))
+            .build()
+        ImageLoader.Builder(context).okHttpClient(okHttpClientForCoil).build()
     }
-    // Reconfigurar Ktor y Coil para usarlo si es necesario (aunque con CIO puede no serlo)
-    val ktorClient = remember { HttpClient(OkHttp) { // Usando OkHttp aquí
-        engine { preconfigured = customOkHttpClient }
-        install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; isLenient = true }) }
-    } }
-    val imageLoader = remember { ImageLoader.Builder(context).okHttpClient(customOkHttpClient).build() }
-    DisposableEffect(Unit) { onDispose { ktorClient.close() } }
 
-
-    // --- Lógica para actualizar nombre de usuario ---
     val updateUsername: (String) -> Unit = { newName ->
         if (currentUid != null && newName.isNotBlank()) {
             coroutineScope.launch {
-                isLoadingUser = true // Mostrar carga mientras se actualiza
+                isLoadingUser = true
                 try {
                     val profileUpdates = UserProfileChangeRequest.Builder().setDisplayName(newName).build()
                     auth.currentUser?.updateProfile(profileUpdates)?.await()
@@ -217,54 +204,64 @@ fun HomeScreen(
         } else { coroutineScope.launch { snackbarHostState.showSnackbar("Nombre inválido.") } }
     }
 
-    // Estado de carga general (para Firestore y API del tiempo)
-    var isLoading by remember { mutableStateOf(true) } // Inicia en true para la carga inicial
+    // isLoadingPisoData se referirá a la carga inicial de la dirección del piso.
+    // weatherLoading se referirá específicamente a la carga de la API del tiempo.
+    var isLoadingPisoData by remember { mutableStateOf(true) }
 
-    // --- Efecto para cargar la dirección y el tiempo ---
-    LaunchedEffect(pisoId, ktorClient) {
+
+    LaunchedEffect(pisoId) {
         if (pisoId.isNotBlank()) {
-            isLoading = true // Carga general
-            weatherLoading = true
-            weatherError = null
-            weatherInfo = null
-            Log.d("HomeScreen", "Fetching address for pisoId: $pisoId")
+            // Solo mostrar carga de dirección si aún no tenemos weatherInfo (primera carga)
+            if (weatherInfo == null) {
+                isLoadingPisoData = true
+            }
+            weatherLoading = true // Siempre intentar cargar/actualizar el tiempo
+            // weatherError = null // No limpiar error aquí para que persista si no se puede actualizar
+
+            Log.d("HomeScreen", "LaunchedEffect: Cargando datos del piso y tiempo para pisoId: $pisoId")
             try {
                 val pisoDoc = db.collection("pisos").document(pisoId).get().await()
                 val address = pisoDoc.getString("direccion")
+                isLoadingPisoData = false // Dirección (o intento) obtenida
+
                 if (address != null && address.isNotBlank()) {
-                    val result = fetchWeatherByAddress(address) // Llama a la función API
+                    Log.d("HomeScreen", "Dirección: $address. Obteniendo tiempo...")
+                    val result = fetchWeatherByAddress(address)
                     result.onSuccess { response ->
                         val iconCode = response.weather?.firstOrNull()?.icon
                         val constructedIconUrl = iconCode?.let { "https://openweathermap.org/img/wn/${it}@2x.png" }
                         weatherInfo = WeatherInfo(
                             temp = response.main?.temp,
-                            description = response.weather?.firstOrNull()?.description,
+                            description = response.weather?.firstOrNull()?.description?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
                             iconUrl = constructedIconUrl,
                             locationName = response.name
                         )
-                        Log.d("HomeScreen", "Weather fetched successfully: $weatherInfo")
+                        weatherError = null // Limpiar error previo si la llamada fue exitosa
+                        Log.d("HomeScreen", "Tiempo obtenido: $weatherInfo")
                     }.onFailure { error ->
-                        weatherError = "Tiempo: ${error.message?.take(50)}" // Mensaje más corto
-                        Log.e("HomeScreen", "Weather fetch failed", error)
+                        // Mantener el error para mostrarlo, no limpiar weatherInfo si ya había datos
+                        weatherError = "Tiempo: ${error.message?.take(100)}"
+                        Log.e("HomeScreen", "Fallo al obtener el tiempo", error)
                     }
                 } else {
-                    weatherError = "No se encontró dirección."
+                    weatherError = "No se encontró dirección para el piso."
+                    Log.w("HomeScreen", "No se encontró dirección para $pisoId")
                 }
             } catch (e: Exception) {
-                weatherError = "Error buscando dirección."
-                Log.e("HomeScreen", "Error fetching piso address", e)
+                weatherError = "Error buscando dirección del piso."
+                Log.e("HomeScreen", "Error al obtener datos del piso $pisoId", e)
+                isLoadingPisoData = false // Asegurar que la carga de piso termina
             } finally {
-                weatherLoading = false
-                isLoading = false // Termina la carga general
+                weatherLoading = false // Carga del tiempo (intento) finalizada
             }
         } else {
             weatherError = "ID de piso inválido."
-            isLoading = false
+            isLoadingPisoData = false
             weatherLoading = false
+            Log.w("HomeScreen", "pisoId está vacío.")
         }
     }
 
-    // --- UI ---
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
@@ -277,7 +274,7 @@ fun HomeScreen(
                     )
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = topAppBarColor),
-                actions = { // Acciones con Menú Perfil
+                actions = {
                     Box {
                         IconButton(onClick = { showProfileMenu = true }) {
                             Icon( Icons.Filled.AccountCircle, "Menú perfil", tint = selectedIconColor)
@@ -290,7 +287,7 @@ fun HomeScreen(
                 }
             )
         },
-        bottomBar = { // Barra de Navegación Inferior
+        bottomBar = {
             NavigationBar(containerColor = navBarColor) {
                 items.forEach { item ->
                     NavigationBarItem(
@@ -298,29 +295,18 @@ fun HomeScreen(
                         selected = selectedRoute == item.route,
                         onClick = {
                             if (selectedRoute != item.route) {
-                                // --- CAMBIO AQUÍ ---
-                                // Navega a la ruta correspondiente
                                 when (item) {
-                                    BottomNavItem.Home -> selectedRoute = item.route // Actualiza estado para la UI interna de HomeScreen
-                                    BottomNavItem.Tasks -> selectedRoute = item.route // Usa el TaskListScreen interno
                                     BottomNavItem.Chat -> {
-                                        // Navega a la pantalla externa ChatScreen
-                                        if (pisoId.isNotBlank()) { // Asegúrate de tener pisoId
+                                        if (pisoId.isNotBlank()) {
                                             navController.navigate("chat/$pisoId")
                                         } else {
-                                            // Opcional: Mostrar un mensaje si no hay pisoId
                                             coroutineScope.launch {
                                                 snackbarHostState.showSnackbar("No se puede abrir el chat sin un piso.")
                                             }
                                         }
-                                        // No cambies 'selectedRoute' aquí si navegas fuera
-                                        // O podrías querer mantener el estado visual, depende de tu lógica
-                                        // selectedRoute = item.route
                                     }
-                                    // Añade casos para Expenses, Shopping si navegan fuera
-                                    else -> selectedRoute = item.route // Para los que se quedan en HomeScreen
+                                    else -> selectedRoute = item.route
                                 }
-                                // --- FIN CAMBIO ---
                             }
                         },
                         colors = NavigationBarItemDefaults.colors(indicatorColor = navBarColor)
@@ -328,47 +314,58 @@ fun HomeScreen(
                 }
             }
         },
-        containerColor = Color(0xFF222222) // Fondo
+        containerColor = Color(0xFF222222)
     ) { innerPadding ->
-        Box( // Contenedor Principal del Contenido
+        Box(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            // --- Selector de Contenido ---
             when (selectedRoute) {
-                BottomNavItem.Home.route -> { // Pestaña Inicio
+                BottomNavItem.Home.route -> {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Sección Tiempo
-                        Column( modifier = Modifier.fillMaxWidth().fillMaxHeight(0.3f).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center ) {
-                            WeatherWidget(weatherInfo, weatherLoading, weatherError, imageLoader)
+                        // Sección Tiempo - Restaurar la altura original si es necesario
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.3f) // Altura original que tenías
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            WeatherWidget(weatherInfo, weatherLoading, weatherError, coilImageLoader)
                         }
                         Divider(color = Color(0xFFF0B433), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
                         // Sección Resumen
-                        Column( modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally ) {
-                            if(isLoading) { // Muestra carga si todavía está buscando datos
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            // Mostrar carga del resumen solo si isLoadingPisoData es true Y weatherInfo es null (primera carga general)
+                            if(isLoadingPisoData && weatherInfo == null) {
                                 CircularProgressIndicator(color=selectedIconColor)
                             } else {
                                 Text("Resumen del Piso", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text("(Tareas, Gastos, etc.)", color = Color.Gray)
-                                // Aquí iría el contenido real del resumen
                             }
                         }
                     }
                 }
-                BottomNavItem.Tasks.route -> { // Pestaña Tareas
-                    val authInstance = Firebase.auth // Obtener instancia aquí o pasarla
-                    TaskListScreen( pisoId = pisoId, navController = navController, auth = authInstance )
+                BottomNavItem.Tasks.route -> {
+                    TaskListScreen( pisoId = pisoId, navController = navController, auth = auth )
                 }
-                BottomNavItem.Expenses.route -> CenteredText("Contenido Gastos (Próximamente)")
-                BottomNavItem.Chat.route -> CenteredText("Contenido Chat (Próximamente)")
+                BottomNavItem.Expenses.route -> {
+                    ExpensesScreen(pisoId = pisoId, navController = navController, auth = auth)
+                }
                 BottomNavItem.Shopping.route -> CenteredText("Contenido Compras (Próximamente)")
             }
-        } // Fin Box Contenido Principal
-    } // Fin Scaffold
+        }
+    }
 
-    // --- Diálogo Cambio Nombre (fuera del Scaffold) ---
     if (showChangeUsernameDialog) {
         ChangeUsernameDialog(
             currentUsername = auth.currentUser?.displayName ?: "",
@@ -376,17 +373,16 @@ fun HomeScreen(
             onConfirm = { newName -> showChangeUsernameDialog = false; updateUsername(newName) }
         )
     }
-} // Fin HomeScreen
+}
 
-// --- Composable ChangeUsernameDialog ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangeUsernameDialog(currentUsername: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var newUsername by remember(currentUsername) { mutableStateOf(currentUsername) }
-    var isLoadingDialog by remember { mutableStateOf(false) } // Estado de carga para el diálogo
+    var isLoadingDialog by remember { mutableStateOf(false) }
 
     AlertDialog(
-        onDismissRequest = { if (!isLoadingDialog) onDismiss() }, // No cerrar si está cargando
+        onDismissRequest = { if (!isLoadingDialog) onDismiss() },
         title = { Text("Cambiar Nombre") },
         text = {
             OutlinedTextField(
@@ -394,52 +390,52 @@ fun ChangeUsernameDialog(currentUsername: String, onDismiss: () -> Unit, onConfi
                 onValueChange = { newUsername = it },
                 label = { Text("Nuevo nombre") },
                 singleLine = true,
-                enabled = !isLoadingDialog, // Deshabilitar campo mientras carga
+                enabled = !isLoadingDialog,
                 modifier = Modifier.fillMaxWidth()
             )
         },
         confirmButton = {
             Button(
                 onClick = {
-                    isLoadingDialog = true // Iniciar carga
+                    isLoadingDialog = true
                     onConfirm(newUsername)
-                    // isLoadingDialog volverá a false implícitamente cuando se cierre el diálogo
-                    // o si la función onConfirm gestionara el estado de carga.
-                    // Para simplicidad, no lo manejamos aquí explícitamente.
                 },
-                enabled = newUsername.isNotBlank() && newUsername != currentUsername && !isLoadingDialog // Habilitar si es válido y no está cargando
+                enabled = newUsername.isNotBlank() && newUsername != currentUsername && !isLoadingDialog
             ) {
                 if(isLoadingDialog) CircularProgressIndicator(modifier = Modifier.size(24.dp), color=MaterialTheme.colorScheme.onPrimary) else Text("Guardar")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoadingDialog) { // Deshabilitar si está cargando
+            TextButton(onClick = onDismiss, enabled = !isLoadingDialog) {
                 Text("Cancelar")
             }
         }
     )
 }
 
-
-// --- Composable WeatherWidget ---
 @Composable
 fun WeatherWidget(weatherInfo: WeatherInfo?, isLoading: Boolean, error: String?, imageLoader: ImageLoader) {
     Card(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp), // Altura mínima
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 90.dp), // Altura mínima como antes
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3A3A)) // Un poco más oscuro
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF3A3A3A))
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(12.dp), // Padding reducido
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
             contentAlignment = Alignment.Center
         ) {
+            // Lógica de visualización original del WeatherWidget
             when {
-                isLoading -> CircularProgressIndicator(color = Color(0xFFF0B90B), modifier = Modifier.size(40.dp))
+                isLoading && weatherInfo == null -> CircularProgressIndicator(color = Color(0xFFF0B90B), modifier = Modifier.size(40.dp)) // Muestra carga solo si no hay datos aún
                 error != null -> Text(error, color = Color(0xFFF44336), textAlign = TextAlign.Center, fontSize = 13.sp)
                 weatherInfo != null -> {
                     Row( verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth() ) {
-                        AsyncImage( // Icono
+                        AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current).data(weatherInfo.iconUrl).crossfade(true).error(R.drawable.ic_broken_image).placeholder(R.drawable.loading_img).build(),
                             contentDescription = weatherInfo.description ?: "Icono tiempo",
                             imageLoader = imageLoader,
@@ -447,27 +443,26 @@ fun WeatherWidget(weatherInfo: WeatherInfo?, isLoading: Boolean, error: String?,
                             contentScale = ContentScale.Fit
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) { // Columna para textos
-                            Text( weatherInfo.locationName ?: "-", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Color.White) // Ubicación más pequeña
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text( weatherInfo.locationName ?: "-", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Color.White)
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text( weatherInfo.temp?.let { "%.0f°C".format(it) } ?: "--°C", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White) // Temp sin decimales
-                            Text( weatherInfo.description?.replaceFirstChar { it.titlecase(Locale.getDefault()) } ?: "-", fontSize = 13.sp, color = Color.LightGray) // Descripción
+                            Text( weatherInfo.temp?.let { "%.0f°C".format(it) } ?: "--°C", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text( weatherInfo.description ?: "-", fontSize = 13.sp, color = Color.LightGray)
                         }
                     }
                 }
-                else -> Text("Cargando datos...", color = Color.Gray, fontSize = 13.sp)
+                else -> Text("Cargando datos...", color = Color.Gray, fontSize = 13.sp) // Texto por defecto si no está cargando, no hay error y no hay info
             }
         }
     }
 }
 
-// --- Composable CenteredText ---
 @Composable
 fun BoxScope.CenteredText(text: String) {
     Text(
         text = text,
         color = Color.White,
-        fontSize = 18.sp, // Ligeramente más pequeño
+        fontSize = 18.sp,
         textAlign = TextAlign.Center,
         modifier = Modifier.align(Alignment.Center).padding(16.dp)
     )

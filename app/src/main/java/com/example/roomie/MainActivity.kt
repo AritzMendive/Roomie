@@ -25,6 +25,8 @@ import com.example.roomie.screens.ChatScreen // <-- AÑADE ESTA LÍNEA
 import androidx.compose.material3.Text // <-- Asegúrate de importar Text si usas un placeholder
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.example.roomie.screens.ExpensesScreen
+import com.example.roomie.screens.CreateExpenseScreen
 
 class MainActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
@@ -186,6 +188,43 @@ class MainActivity : ComponentActivity() {
                             // Reemplaza esto con tu pantalla real cuando la tengas
                             // CreatePisoScreen(auth = auth, navController = navController)
                             CreatePisoScreen(auth = auth, navController = navController) // Placeholder
+                        }
+                    }
+
+                    composable(
+                        route = "expenses_screen/{pisoId}",
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        if (pisoIdArg != null && auth.currentUser != null) {
+                            ExpensesScreen(
+                                pisoId = pisoIdArg,
+                                navController = navController,
+                                auth = auth
+                            )
+                        } else {
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        }
+                    }
+
+
+                    composable(
+                        route = "create_expense/{pisoId}",
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        if (pisoIdArg != null && auth.currentUser != null) {
+                            CreateExpenseScreen(
+                                navController = navController,
+                                pisoId = pisoIdArg,
+                                auth = auth
+                            )
+                        } else {
+                            // Redirigir si no hay pisoId o usuario
+                            Log.e("Nav", "No se puede navegar a CreateExpenseScreen: pisoId=$pisoIdArg, user=${auth.currentUser}")
+                            LaunchedEffect(Unit) {
+                                navController.popBackStack() // O navegar a login
+                            }
                         }
                     }
                     // Dentro del NavHost en MainActivity.kt

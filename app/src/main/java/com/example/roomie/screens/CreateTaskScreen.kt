@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -22,7 +23,6 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
@@ -173,9 +173,21 @@ fun CreateTaskScreen(
             Text("Crear nueva tarea", fontSize = 28.sp, color = Color(0xFFF0B90B), fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 24.dp))
 
             // --- Campos del formulario ---
-            FormTextField(label = "Título", value = title, onValueChange = { title = it })
+            FormTextField(
+                label = "Título",
+                value = title,
+                onValueChange = { title = it },
+                keyboardType = KeyboardType.Decimal
+            )
             Spacer(modifier = Modifier.height(16.dp))
-            FormTextField(label = "Descripción", value = description, onValueChange = { description = it }, singleLine = false, minLines = 3)
+            FormTextField(
+                label = "Descripción",
+                value = description,
+                onValueChange = { description = it },
+                singleLine = false,
+                minLines = 3,
+                keyboardType = KeyboardType.Decimal
+            )
             Spacer(modifier = Modifier.height(16.dp))
 
             // --- Selector de Fecha ---
@@ -296,7 +308,8 @@ fun FormTextField(
     value: String,
     onValueChange: (String) -> Unit,
     singleLine: Boolean = true,
-    minLines: Int = 1
+    minLines: Int = 1,
+    keyboardType: KeyboardType
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(label + ":", color = Color.White, modifier = Modifier.align(Alignment.Start))
