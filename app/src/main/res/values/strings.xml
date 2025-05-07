@@ -13,4 +13,5 @@
     <string name="title_activity_add_expense_screen">AddExpenseScreen</string>
     <string name="title_activity_expenses_screen">ExpensesScreen</string>
     <string name="title_activity_create_expense_screen">CreateExpenseScreen</string>
+    <string name="title_activity_shopping_list_screen">ShoppingListScreen</string>
 </resources>

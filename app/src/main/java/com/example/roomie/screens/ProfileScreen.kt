@@ -1,4 +1,5 @@
-// ProfileScreen.kt (Modificado para mostrar nombre del piso)
+// ProfileScreen.kt
+
 package com.example.roomie.screens
 
 import android.util.Log
@@ -6,20 +7,28 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apartment
+import androidx.compose.material.icons.filled.ContentCopy // Icono para copiar
+import androidx.compose.material.icons.filled.Share // Icono alternativo para compartir
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager // Para copiar al portapapeles
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString // Necesario para copiar
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast // Para mostrar mensaje de copiado
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.style.TextAlign
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.launch // Importar CoroutineScope launch si no está
+// import kotlinx.coroutines.launch // No se usa directamente aquí
 
 @Composable
 fun ProfileScreen(
@@ -34,69 +43,59 @@ fun ProfileScreen(
     val uid = currentUser?.uid
     val db = Firebase.firestore
 
-    // Estado para guardar el ID del piso del usuario
     var pisoId by remember { mutableStateOf<String?>(null) }
-    // --- NUEVO: Estado para guardar el NOMBRE del piso ---
     var pisoName by remember { mutableStateOf<String?>(null) }
-    // Estado para indicar si se está cargando el nombre del piso
     var isLoadingPisoName by remember { mutableStateOf(false) }
 
+    // Para la funcionalidad de copiar
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
-    // --- Fetch user data y luego piso data ---
-    LaunchedEffect(uid) { // Se (re)ejecuta si uid cambia
+    LaunchedEffect(uid) {
         if (uid != null) {
-            isLoadingPisoName = true // Empieza a cargar
-            pisoId = null // Resetea estados al iniciar/cambiar uid
+            isLoadingPisoName = true
+            pisoId = null
             pisoName = null
             try {
                 Log.d("ProfileScreen", "Fetching user document for UID: $uid")
                 val userDoc = db.collection("users").document(uid).get().await()
-
                 if (userDoc.exists()) {
                     val fetchedPisoId = userDoc.getString("piso")
-                    pisoId = fetchedPisoId // Guarda el ID
+                    pisoId = fetchedPisoId // Guardar el ID
                     Log.d("ProfileScreen", "User belongs to piso ID: $fetchedPisoId")
 
-                    // Si el usuario tiene un piso asignado, busca el nombre
                     if (fetchedPisoId != null && fetchedPisoId.isNotBlank()) {
                         try {
                             Log.d("ProfileScreen", "Fetching piso document for ID: $fetchedPisoId")
                             val pisoDoc = db.collection("pisos").document(fetchedPisoId).get().await()
                             if (pisoDoc.exists()) {
-                                val fetchedPisoName = pisoDoc.getString("nombre")
-                                pisoName = fetchedPisoName // Guarda el nombre
-                                Log.d("ProfileScreen", "Fetched piso name: $fetchedPisoName")
+                                pisoName = pisoDoc.getString("nombre")
+                                Log.d("ProfileScreen", "Fetched piso name: $pisoName")
                             } else {
                                 Log.w("ProfileScreen", "Piso document $fetchedPisoId does not exist.")
-                                pisoName = null // El documento del piso no existe
+                                pisoName = null
                             }
                         } catch (e: Exception) {
                             Log.e("ProfileScreen", "Error fetching piso document $fetchedPisoId", e)
-                            pisoName = null // Error al buscar el piso
+                            pisoName = null
                         }
                     } else {
-                        pisoName = null // El usuario no tiene pisoId asignado
+                        pisoName = null
                     }
                 } else {
                     Log.w("ProfileScreen", "User document $uid does not exist.")
-                    pisoId = null
-                    pisoName = null
+                    pisoId = null; pisoName = null
                 }
             } catch (e: Exception) {
                 Log.e("ProfileScreen", "Error fetching user document $uid", e)
-                pisoId = null
-                pisoName = null
+                pisoId = null; pisoName = null
             } finally {
-                isLoadingPisoName = false // Termina de cargar (éxito o error)
+                isLoadingPisoName = false
             }
         } else {
-            // Si uid es null (usuario no logueado), resetea todo
-            pisoId = null
-            pisoName = null
-            isLoadingPisoName = false
+            pisoId = null; pisoName = null; isLoadingPisoName = false
         }
     }
-    // --- End Fetch ---
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF222222)) {
         Column(
@@ -127,14 +126,13 @@ fun ProfileScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Tus pisos:",
+                    text = "Tu piso actual:", // Cambiado para claridad
                     style = TextStyle(fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.SemiBold),
                 )
             }
-
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- Botón/Indicador del piso actual (AHORA MUESTRA EL NOMBRE) ---
+            // --- Botón/Indicador del piso actual ---
             Button(
                 onClick = { pisoId?.let { onNavigateToPisoHome(it) } },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -143,24 +141,62 @@ fun ProfileScreen(
                     containerColor = if (pisoId != null) Color(0xFFF0B90B) else Color.Gray,
                     contentColor = Color.Black
                 ),
-                enabled = pisoId != null // Botón habilitado solo si está en un piso
+                enabled = pisoId != null
             ) {
                 val buttonText = when {
                     isLoadingPisoName -> "Cargando nombre..."
                     pisoName != null -> pisoName
-                    pisoId != null -> "Ir al Piso (ID: ...)" // Texto alternativo si no hay nombre
+                    pisoId != null -> "Ir al Piso (ID: ...)"
                     else -> "No estás en ningún piso"
                 }
-                Text(
-                    text = buttonText.toString(),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text(buttonText ?: "Error", fontSize = 16.sp, fontWeight = FontWeight.Bold) // Añadido fallback
             }
 
+            // --- NUEVA SECCIÓN: MOSTRAR Y COPIAR ID DEL PISO ---
+            if (pisoId != null && pisoId!!.isNotBlank() && !isLoadingPisoName) {
+                Spacer(modifier = Modifier.height(24.dp)) // Más espacio antes de esta sección
+                Text(
+                    text = "ID del Piso para compartir:",
+                    style = TextStyle(fontSize = 16.sp, color = Color.White),
+                    modifier = Modifier.align(Alignment.Start) // Alinear a la izquierda
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min) // Ajustar altura al contenido
+                        .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween // Espacio entre texto y botón
+                ) {
+                    // Mostrar el ID del piso
+                    Text(
+                        text = pisoId!!,
+                        style = TextStyle(fontSize = 15.sp, color = Color.LightGray, fontWeight = FontWeight.Medium),
+                        modifier = Modifier.weight(1f) // Permitir que ocupe espacio y se ajuste
+                    )
+                    // Botón para copiar el ID
+                    IconButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(pisoId!!))
+                            // Mostrar mensaje de confirmación (Toast)
+                            Toast.makeText(context, "ID del piso copiado", Toast.LENGTH_SHORT).show()
+                            Log.d("ProfileScreen", "Piso ID copied: $pisoId")
+                        },
+                        modifier = Modifier.size(36.dp) // Tamaño del botón icono
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ContentCopy,
+                            contentDescription = "Copiar ID del piso",
+                            tint = Color(0xFFF0B90B) // Color del icono
+                        )
+                    }
+                }
+            }
+            // --- FIN NUEVA SECCIÓN ---
 
-
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp)) // Espacio antes de los botones de acción
 
             // --- Botones de Acción ---
             Button(
@@ -171,9 +207,7 @@ fun ProfileScreen(
             ) {
                 Text("+ Crear nuevo piso", color = Color.White, fontSize = 16.sp)
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
             Button(
                 onClick = { onNavigateToJoinPiso() },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -183,15 +217,11 @@ fun ProfileScreen(
                 Text("Unirte a nuevo piso", color = Color.White, fontSize = 16.sp)
             }
 
-
             Spacer(modifier = Modifier.weight(1f))
 
             // --- Botón Cerrar Sesión ---
             Button(
-                onClick = {
-                    // No es necesario llamar a auth.signOut() aquí si ya se hace en MainActivity
-                    onLogout()
-                },
+                onClick = { onLogout() },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)

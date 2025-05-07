@@ -15,6 +15,16 @@
         android:theme="@style/Theme.Roomie"
         tools:targetApi="31">
         <activity
+            android:name=".screens.ShoppingListScreen"
+            android:exported="false"
+            android:label="@string/title_activity_shopping_list_screen"
+            android:theme="@style/Theme.Roomie" />
+        <activity
+            android:name=".screens.ui.theme.ShoppingListScreen"
+            android:exported="false"
+            android:label="@string/title_activity_shopping_list_screen"
+            android:theme="@style/Theme.Roomie" />
+        <activity
             android:name=".screens.CreateExpenseScreen"
             android:exported="false"
             android:label="@string/title_activity_create_expense_screen"
