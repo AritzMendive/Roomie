@@ -22,12 +22,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast // Para mostrar mensaje de copiado
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import com.example.roomie.screens.ui.theme.InterFontFamily
+import com.example.roomie.screens.ui.theme.SyneFontFamily
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
+
 // import kotlinx.coroutines.launch // No se usa directamente aquí
 
 @Composable
@@ -50,6 +59,13 @@ fun ProfileScreen(
     // Para la funcionalidad de copiar
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+
+    val yellowColor = Color(0xFFF0B433)
+    val lightYellowColor = Color(0xFFF4C561) // Un amarillo muy claro, casi blanco
+    val gradientBrush = Brush.verticalGradient( // Gradiente vertical
+        colors = listOf(lightYellowColor, yellowColor)
+    )
+    val disabledColor = Color.Gray
 
     LaunchedEffect(uid) {
         if (uid != null) {
@@ -97,7 +113,7 @@ fun ProfileScreen(
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF222222)) {
+    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF242424)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -107,12 +123,12 @@ fun ProfileScreen(
             // --- Bienvenida ---
             Text(
                 text = "Bienvenido/a",
-                style = TextStyle(fontSize = 24.sp, color = Color.White),
+                style = TextStyle(fontSize = 24.sp, fontFamily = SyneFontFamily, fontWeight = FontWeight.ExtraBold, color = Color.White),
                 modifier = Modifier.padding(bottom = 4.dp)
             )
             Text(
                 text = username ?: "Usuario",
-                style = TextStyle(fontSize = 36.sp, color = Color(0xFFF0B90B), fontWeight = FontWeight.Bold),
+                style = TextStyle(fontSize = 36.sp, color = Color(0xFFF0B90B), fontFamily = SyneFontFamily, fontWeight = FontWeight.ExtraBold),
                 modifier = Modifier.padding(bottom = 48.dp)
             )
 
@@ -127,37 +143,50 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Tu piso actual:", // Cambiado para claridad
-                    style = TextStyle(fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.SemiBold),
+                    style = TextStyle(fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.Bold, fontFamily = SyneFontFamily),
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
 
             // --- Botón/Indicador del piso actual ---
-            Button(
-                onClick = { pisoId?.let { onNavigateToPisoHome(it) } },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (pisoId != null) Color(0xFFF0B90B) else Color.Gray,
-                    contentColor = Color.Black
-                ),
-                enabled = pisoId != null
+            val isEnabled = pisoId != null && !isLoadingPisoName // Determinar si está habilitado
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(8.dp)) // Aplicar forma redondeada al Box
+                    .background(
+                        brush = if (isEnabled) gradientBrush else SolidColor(disabledColor), // Aplicar gradiente o color gris
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .clickable(enabled = isEnabled) { // Hacer clicable el Box
+                        pisoId?.let { onNavigateToPisoHome(it) }
+                    },
+                contentAlignment = Alignment.Center // Centrar el texto dentro del Box
             ) {
                 val buttonText = when {
                     isLoadingPisoName -> "Cargando nombre..."
                     pisoName != null -> pisoName
-                    pisoId != null -> "Ir al Piso (ID: ...)"
+                    pisoId != null -> "Ir al Piso"
                     else -> "No estás en ningún piso"
                 }
-                Text(buttonText ?: "Error", fontSize = 16.sp, fontWeight = FontWeight.Bold) // Añadido fallback
+                Text(
+                    text = buttonText ?: "Error",
+                    // fontFamily = InterFontFamily, // Aplica tu fuente si la tienes
+                    fontWeight = FontWeight.Bold, // O SemiBold
+                    fontFamily = InterFontFamily,
+                    fontSize = 24.sp,
+                    color = if (isEnabled) Color.White else Color.White // Color del texto (negro sobre amarillo, blanco sobre gris)
+                )
             }
 
             // --- NUEVA SECCIÓN: MOSTRAR Y COPIAR ID DEL PISO ---
             if (pisoId != null && pisoId!!.isNotBlank() && !isLoadingPisoName) {
                 Spacer(modifier = Modifier.height(24.dp)) // Más espacio antes de esta sección
                 Text(
-                    text = "ID del Piso para compartir:",
-                    style = TextStyle(fontSize = 16.sp, color = Color.White),
+                    text = "Compartir ID:",
+                    style = TextStyle(fontSize = 16.sp, color = Color.White, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold),
                     modifier = Modifier.align(Alignment.Start) // Alinear a la izquierda
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -203,18 +232,18 @@ fun ProfileScreen(
                 onClick = { onNavigateToCreatePiso() },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336)) // Rojo
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFE4D21)) // Rojo
             ) {
-                Text("+ Crear nuevo piso", color = Color.White, fontSize = 16.sp)
+                Text("+ Crear nuevo piso", color = Color.White, fontSize = 18.sp, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold)
             }
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = { onNavigateToJoinPiso() },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA000)) // Naranja
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFE7D21)) // Naranja
             ) {
-                Text("Unirte a nuevo piso", color = Color.White, fontSize = 16.sp)
+                Text("Unirte a nuevo piso", color = Color.White, fontSize = 18.sp, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.weight(1f))

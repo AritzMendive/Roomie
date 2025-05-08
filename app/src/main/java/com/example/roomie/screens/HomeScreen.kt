@@ -34,6 +34,7 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.roomie.R // Asegúrate que tus recursos drawable estén aquí
+import com.example.roomie.screens.ui.theme.SyneFontFamily
 import com.google.firebase.Timestamp // Importar Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -123,8 +124,8 @@ object NetworkClient {
 
 // --- Función para obtener el tiempo ---
 suspend fun fetchWeatherByAddress(address: String): Result<OpenWeatherMapResponse> {
-    val apiKey = "9aca4a0cb3121a434c2d4ac9d5566890" // <-- REEMPLAZA ESTO DE FORMA SEGURA
-    if (apiKey.startsWith("TU_API_KEY") || apiKey.isBlank()) {
+    val apiKey = "9aca4a0cb3121a434c2d4ac9d5566890"
+    if (apiKey.isBlank()) {
         return Result.failure(Exception("API Key no configurada"))
     }
     val formattedAddress = address.replace(" ", "+")
@@ -182,22 +183,26 @@ fun HomeScreen(
     var showProfileMenu by remember { mutableStateOf(false) }
     var showChangeUsernameDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-
     var weatherInfo by remember { mutableStateOf<WeatherInfo?>(null) }
     var weatherError by remember { mutableStateOf<String?>(null) }
-
     var selectedRoute by remember { mutableStateOf(BottomNavItem.Home.route) }
-    var isLoadingUser by remember { mutableStateOf(false) } // Para la actualización del nombre
-
+    var isLoadingUser by remember { mutableStateOf(false) }
     var taskSummary by remember { mutableStateOf<TaskSummary?>(null) }
     var expenseSummary by remember { mutableStateOf<ExpenseSummary?>(null) }
-    var isLoadingContent by remember { mutableStateOf(true) } // Estado de carga unificado
+    // Estado de carga unificado: true inicialmente, false después de la primera carga de todos los listeners
+    var isLoadingContent by remember { mutableStateOf(true) }
+    // Estados para saber si cada listener ha cargado datos por primera vez
+    var initialWeatherLoaded by remember { mutableStateOf(false) }
+    var initialTasksLoaded by remember { mutableStateOf(false) }
+    var initialExpensesLoaded by remember { mutableStateOf(false) }
+    var pisoDisplayName by remember { mutableStateOf<String?>(null) }
+
 
     val items = listOf(
         BottomNavItem.Home, BottomNavItem.Tasks, BottomNavItem.Expenses, BottomNavItem.Chat, BottomNavItem.Shopping
     )
     val navBarColor = Color(0xFF1A1A1A)
-    val selectedIconColor = Color(0xFFF0B90B)
+    val selectedIconColor = Color(0xFFF0B433)
     val unselectedIconColor = Color.Gray
     val topAppBarColor = Color(0xFF1A1A1A)
 
@@ -234,76 +239,122 @@ fun HomeScreen(
     // Efecto para cargar todo el contenido inicial (tiempo, resúmenes)
     LaunchedEffect(pisoId, currentUid) {
         if (pisoId.isBlank() || currentUid.isBlank()) {
-            weatherError = "ID de piso o usuario inválido." // Mostrar error general
+            weatherError = "ID de piso o usuario inválido."
             isLoadingContent = false
             Log.w("HomeScreen", "pisoId o currentUid está vacío.")
+            taskSummary = TaskSummary()
+            expenseSummary = ExpenseSummary()
+            pisoDisplayName = null // Limpiar nombre
             return@LaunchedEffect
         }
 
         isLoadingContent = true
-        Log.d("HomeScreen", "LaunchedEffect: Iniciando carga de datos para pisoId: $pisoId, UID: $currentUid")
+        initialWeatherLoaded = false
+        initialTasksLoaded = false
+        initialExpensesLoaded = false
+        taskSummary = null
+        expenseSummary = null
+        weatherInfo = null
+        weatherError = null
+        pisoDisplayName = null // Limpiar nombre al iniciar
 
-        // Lanzar todas las cargas en paralelo
-        val weatherDeferred = coroutineScope.async {
+        Log.d("HomeScreen", "LaunchedEffect: Iniciando carga y listeners para pisoId: $pisoId, UID: $currentUid")
+
+        val pisoDataJob = launch {
             try {
                 val pisoDoc = db.collection("pisos").document(pisoId).get().await()
-                val address = pisoDoc.getString("direccion")
-                if (address != null && address.isNotBlank()) {
-                    fetchWeatherByAddress(address).fold(
-                        onSuccess = { response ->
-                            val iconCode = response.weather?.firstOrNull()?.icon
-                            val constructedIconUrl = iconCode?.let { "https://openweathermap.org/img/wn/${it}@2x.png" }
-                            weatherInfo = WeatherInfo(
-                                temp = response.main?.temp,
-                                description = response.weather?.firstOrNull()?.description?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                                iconUrl = constructedIconUrl,
-                                locationName = response.name
-                            )
-                            weatherError = null // Limpiar error si fue exitoso
-                        },
-                        onFailure = { error ->
-                            weatherError = "Tiempo: ${error.message?.take(100)}"
-                            Log.e("HomeScreen", "Fallo al obtener el tiempo", error)
-                        }
-                    )
+                if (pisoDoc.exists()) {
+                    // --- OBTENER NOMBRE DEL PISO ---
+                    pisoDisplayName = pisoDoc.getString("nombre") ?: "Piso sin nombre"
+                    Log.d("HomeScreen", "Nombre del piso obtenido: $pisoDisplayName")
+
+                    // Obtener dirección para el tiempo
+                    val address = pisoDoc.getString("direccion")
+                    if (address != null && address.isNotBlank()) {
+                        fetchWeatherByAddress(address).fold(
+                            onSuccess = { response ->
+                                val iconCode = response.weather?.firstOrNull()?.icon
+                                val constructedIconUrl = iconCode?.let { "https://openweathermap.org/img/wn/${it}@2x.png" }
+                                weatherInfo = WeatherInfo(
+                                    temp = response.main?.temp,
+                                    description = response.weather?.firstOrNull()?.description?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                                    iconUrl = constructedIconUrl,
+                                    locationName = response.name
+                                )
+                                weatherError = null
+                            },
+                            onFailure = { error ->
+                                weatherError = "Tiempo: ${error.message?.take(100)}"
+                            }
+                        )
+                    } else {
+                        weatherError = "No se encontró dirección."
+                    }
                 } else {
-                    weatherError = "No se encontró dirección."
-                    Log.w("HomeScreen", "No se encontró dirección para $pisoId")
+                    weatherError = "No se encontró el documento del piso."
+                    pisoDisplayName = "Piso no encontrado" // Indicar error
+                    Log.w("HomeScreen", "Documento del piso $pisoId no existe.")
                 }
             } catch (e: Exception) {
                 weatherError = "Error con datos del piso/tiempo."
-                Log.e("HomeScreen", "Excepción en carga de tiempo/dirección", e)
+                pisoDisplayName = "Error al cargar" // Indicar error
+                Log.e("HomeScreen", "Excepción en carga de datos del piso/tiempo", e)
+            } finally {
+                initialWeatherLoaded = true // Marcar carga de tiempo/piso como completada (o fallida)
+                if (initialTasksLoaded && initialExpensesLoaded) {
+                    isLoadingContent = false
+                }
             }
         }
 
-        val taskSummaryDeferred = coroutineScope.async {
-            try {
-                val tasksSnapshot = db.collection("pisos").document(pisoId).collection("tasks")
-                    .whereEqualTo("isCompleted", false)
-                    .orderBy("dueDate", Query.Direction.ASCENDING)
-                    .get().await()
-                // Asegúrate que la data class Task tiene los campos necesarios
-                val tasks = tasksSnapshot.documents.mapNotNull { it.toObject<Task>() }
+        val tasksCollection = db.collection("pisos").document(pisoId).collection("tasks")
+            .whereEqualTo("isCompleted", false)
+            .orderBy("dueDate", Query.Direction.ASCENDING)
+
+        val tasksListener = tasksCollection.addSnapshotListener { snapshots, e ->
+            if (e != null) {
+                Log.e("HomeScreen", "Error en listener de tareas", e)
+                taskSummary = TaskSummary() // Estado de error/defecto
+                if (!initialTasksLoaded) { // Marcar como cargado incluso si hay error inicial
+                    initialTasksLoaded = true
+                    if (initialWeatherLoaded && initialExpensesLoaded) isLoadingContent = false
+                }
+                return@addSnapshotListener
+            }
+            if (snapshots != null) {
+                val tasks = snapshots.documents.mapNotNull { it.toObject<Task>() }
                 val pendingForUser = tasks.count { it.assignedUserIds.contains(currentUid) }
                 val nextTaskForUser = tasks.firstOrNull { it.assignedUserIds.contains(currentUid) }
                 val nextOverallTask = tasks.firstOrNull()
+                // Actualizar el estado con el nuevo resumen
                 taskSummary = TaskSummary(
                     pendingTasksForUser = pendingForUser,
                     totalPendingTasks = tasks.size,
                     nextDueTaskTitle = nextTaskForUser?.title ?: nextOverallTask?.title,
                     nextDueDate = nextTaskForUser?.dueDate ?: nextOverallTask?.dueDate
                 )
-            } catch (e: Exception) {
-                Log.e("HomeScreen", "Error cargando resumen de tareas", e)
-                taskSummary = TaskSummary() // Estado por defecto en caso de error
+                Log.d("HomeScreen", "Resumen de tareas actualizado.")
+            }
+            if (!initialTasksLoaded) { // Marcar como cargado después de la primera recepción de datos
+                initialTasksLoaded = true
+                if (initialWeatherLoaded && initialExpensesLoaded) isLoadingContent = false
             }
         }
 
-        val expenseSummaryDeferred = coroutineScope.async {
-            try {
-                val expensesSnapshot = db.collection("pisos").document(pisoId).collection("expenses").get().await()
-                // Asegúrate que la data class Expense tiene los campos necesarios
-                val expensesList = expensesSnapshot.documents.mapNotNull { it.toObject<Expense>() }
+        val expensesCollection = db.collection("pisos").document(pisoId).collection("expenses")
+
+        val expensesListener = expensesCollection.addSnapshotListener { snapshots, e ->
+            if (e != null) {
+                Log.e("HomeScreen", "Error en listener de gastos", e)
+                expenseSummary = ExpenseSummary() // Estado de error/defecto
+                if (!initialExpensesLoaded) {
+                    initialExpensesLoaded = true
+                    if (initialWeatherLoaded && initialTasksLoaded) isLoadingContent = false
+                }
+                return@addSnapshotListener
+            }
+            if (snapshots != null) {
+                val expensesList = snapshots.documents.mapNotNull { it.toObject<Expense>() }
                 var totalOwedToUser = 0.0
                 var totalUserOwes = 0.0
                 expensesList.forEach { expense ->
@@ -321,18 +372,16 @@ fun HomeScreen(
                         }
                     }
                 }
+                // Actualizar el estado con el nuevo resumen
                 expenseSummary = ExpenseSummary(totalOwedToUser, totalUserOwes)
-            } catch (e: Exception) {
-                Log.e("HomeScreen", "Error cargando resumen de gastos", e)
-                expenseSummary = ExpenseSummary() // Estado por defecto
+                Log.d("HomeScreen", "Resumen de gastos actualizado.")
+            }
+            if (!initialExpensesLoaded) {
+                initialExpensesLoaded = true
+                if (initialWeatherLoaded && initialTasksLoaded) isLoadingContent = false
             }
         }
-
-        // Esperar a que todas las cargas asíncronas finalicen
-        awaitAll(weatherDeferred, taskSummaryDeferred, expenseSummaryDeferred)
-        isLoadingContent = false // Marcar la carga como finalizada
-        Log.d("HomeScreen", "Todas las cargas de contenido inicial finalizadas.")
-    }
+        }
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -382,7 +431,7 @@ fun HomeScreen(
             NavigationBar(containerColor = navBarColor) {
                 items.forEach { item ->
                     NavigationBarItem(
-                        icon = { Image(painter = painterResource(id = item.iconResId), contentDescription = item.label, modifier = Modifier.size(24.dp), colorFilter = ColorFilter.tint(if (selectedRoute == item.route) selectedIconColor else unselectedIconColor)) },
+                        icon = { Image(painter = painterResource(id = item.iconResId), contentDescription = item.label, modifier = Modifier.size(34.dp), colorFilter = ColorFilter.tint(if (selectedRoute == item.route) selectedIconColor else unselectedIconColor)) },
                         selected = selectedRoute == item.route,
                         onClick = {
                             if (selectedRoute != item.route) {
@@ -403,7 +452,7 @@ fun HomeScreen(
                 }
             }
         },
-        containerColor = Color(0xFF222222) // Fondo general
+        containerColor = Color(0xFF242424) // Fondo general
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
             when (selectedRoute) {
@@ -412,12 +461,37 @@ fun HomeScreen(
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Sección del Tiempo
                         Column(
-                            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.3f).padding(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.28f) // Mantener altura original
+                                .padding(horizontal = 16.dp, vertical = 8.dp), // Ajustar padding vertical
                             horizontalAlignment = Alignment.CenterHorizontally,
+                            // Alinear contenido al centro verticalmente dentro de este espacio
                             verticalArrangement = Arrangement.Center
                         ) {
-                            // Mostrar carga inicial solo si no hay datos previos
-                            WeatherWidget(weatherInfo, isLoadingContent && weatherInfo == null, weatherError, coilImageLoader)
+                            // --- MOSTRAR NOMBRE DEL PISO ---
+                            if (!isLoadingContent || pisoDisplayName != null) { // Mostrar si no está cargando o si ya tenemos un nombre
+                                Text(
+                                    text = pisoDisplayName ?: "Cargando nombre...", // Mostrar placeholder si es null
+                                    fontSize = 40.sp, // Tamaño un poco más grande para el nombre del piso
+                                    fontFamily = SyneFontFamily,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = selectedIconColor, // Usar color principal
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 10.dp) // Espacio antes del widget del tiempo
+                                )
+                            } else {
+                                // Placeholder o espacio si aún está cargando el nombre
+                                Spacer(modifier = Modifier.height(28.dp)) // Espacio equivalente al texto
+                            }
+
+                            // Widget del Tiempo
+                            WeatherWidget(
+                                weatherInfo,
+                                isLoadingContent && weatherInfo == null, // Carga inicial del tiempo
+                                weatherError,
+                                coilImageLoader
+                            )
                         }
                         Divider(color = Color(0xFFF0B433), thickness = 1.dp, modifier = Modifier.padding(horizontal = 16.dp))
 
@@ -574,15 +648,23 @@ fun SummaryCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.Start
         ) {
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF0B90B), modifier = Modifier.padding(bottom = 10.dp))
+            Text(
+                title,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFFF0B90B), // selectedIconColor
+                modifier = Modifier
+                    .padding(bottom = 10.dp)
+                    .align(Alignment.CenterHorizontally)
+            )
             content()
         }
     }
 }
-
 // --- Composable CenteredText (sin cambios) ---
 @Composable
 fun BoxScope.CenteredText(text: String) {
