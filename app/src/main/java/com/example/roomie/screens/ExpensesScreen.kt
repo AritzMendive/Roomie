@@ -34,6 +34,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
+
 // Data class para representar un Gasto
 data class Expense(
     val id: String = "",

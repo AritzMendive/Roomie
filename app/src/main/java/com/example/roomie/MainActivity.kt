@@ -1,110 +1,182 @@
 // MainActivity.kt
 package com.example.roomie
 
+import android.Manifest
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorManager
 import android.os.Bundle
+import android.os.Vibrator
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresPermission
 import androidx.compose.runtime.*
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.roomie.screens.LoginScreen
-import com.example.roomie.screens.ProfileScreen
-import com.example.roomie.screens.RegisterScreen
-import com.example.roomie.screens.JoinPisoScreen // <-- Importa la nueva pantalla
-import com.example.roomie.screens.CreatePisoScreen // <-- Descomenta si creas esta pantalla
+import androidx.navigation.navArgument
+import com.example.roomie.screens.* // Importa todas tus pantallas
 import com.example.roomie.ui.theme.RoomieTheme
+import com.example.roomie.utils.ShakeDetector // IMPORTA TU CLASE ShakeDetector
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.ktx.Firebase
-import com.example.roomie.screens.HomeScreen
-import com.example.roomie.screens.CreateTaskScreen
-import com.example.roomie.screens.ChatScreen // <-- AÑADE ESTA LÍNEA
-import androidx.compose.material3.Text // <-- Asegúrate de importar Text si usas un placeholder
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
-import com.example.roomie.screens.ExpensesScreen
-import com.example.roomie.screens.CreateExpenseScreen
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+// Objeto para mantener el pisoId actual de forma global
+object GlobalPisoIdHolder {
+    private val _currentPisoId = MutableStateFlow<String?>(null)
+    val currentPisoId: StateFlow<String?> = _currentPisoId.asStateFlow()
+
+    fun updatePisoId(pisoId: String?) {
+        Log.d("GlobalPisoIdHolder", "Updating pisoId to: $pisoId")
+        _currentPisoId.value = pisoId
+    }
+}
 
 class MainActivity : ComponentActivity() {
     private lateinit var auth: FirebaseAuth
+    private lateinit var shakeDetector: ShakeDetector
+    private lateinit var navController: NavHostController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        auth = Firebase.auth // Inicializa FirebaseAuth
+        auth = Firebase.auth
+
+        shakeDetector = ShakeDetector(this)
 
         setContent {
             RoomieTheme {
-                val navController = rememberNavController() // Inicializa NavController
+                navController = rememberNavController()
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = navBackStackEntry?.destination?.route
 
-                // Comprueba el estado de autenticación inicial (opcional pero recomendado)
-                // Podrías querer navegar directamente a "profile" si el usuario ya está logueado.
-                // val startDestination = if (auth.currentUser != null) "profile" else "login"
-                val startDestination = "login" // O mantener login como inicio siempre
+                val currentPisoId by GlobalPisoIdHolder.currentPisoId.collectAsState()
 
-                NavHost(navController = navController, startDestination = startDestination) {
+                LaunchedEffect(key1 = Unit) {
+                    shakeDetector.setOnShakeListener(object : ShakeDetector.OnShakeListener {
+                        @RequiresPermission(Manifest.permission.VIBRATE)
+                        override fun onShake() {
+                            Log.d("MainActivity", "Shake detected! Current route: $currentRoute, PisoID: $currentPisoId")
 
-                    composable("login") {
-                        // Si el usuario ya está logueado, redirige a profile inmediatamente
-                        // Esto evita ver la pantalla de login brevemente si ya hay sesión.
-                        if (auth.currentUser != null) {
-                            LaunchedEffect(Unit) { // Evita llamadas múltiples
-                                navController.navigate("profile") {
-                                    popUpTo("login") { inclusive = true }
+                            val excludedRoutes = listOf("login", "profile", "register", "join_piso", "create_piso")
+                            val isExcludedRoute = excludedRoutes.any { currentRoute?.startsWith(it) == true }
+
+                            if (!isExcludedRoute && currentPisoId != null && currentPisoId!!.isNotBlank()) {
+                                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                                if (vibrator.hasVibrator()) {
+                                    @Suppress("DEPRECATION")
+                                    vibrator.vibrate(100)
                                 }
+                                Log.d("MainActivity", "Navigating to create_incident_screen/$currentPisoId due to shake.")
+                                navController.navigate("create_incident_screen/$currentPisoId") {
+                                    launchSingleTop = true // Evita apilar la misma pantalla múltiples veces
+                                }
+                            } else {
+                                Log.d("MainActivity", "Shake ignored. Route: $currentRoute ($isExcludedRoute), PisoID: $currentPisoId")
+                            }
+                        }
+                    })
+                }
+
+                NavHost(navController = navController, startDestination = "login") {
+                    composable("login") {
+                        LaunchedEffect(Unit) { GlobalPisoIdHolder.updatePisoId(null) }
+                        if (auth.currentUser != null) {
+                            LaunchedEffect(Unit) {
+                                navController.navigate("profile") { popUpTo("login") { inclusive = true } }
                             }
                         } else {
                             LoginScreen(
                                 auth = auth,
                                 onNavigateToRegister = { navController.navigate("register") },
                                 onLoginSuccess = {
-                                    // Navega a profile limpiando el stack hasta login
-                                    navController.navigate("profile") {
-                                        popUpTo("login") { inclusive = true }
+                                    navController.navigate("profile") { popUpTo("login") { inclusive = true } }
+                                }
+                            )
+                        }
+                    }
+                    composable("register") {
+                        LaunchedEffect(Unit) { GlobalPisoIdHolder.updatePisoId(null) }
+                        RegisterScreen(
+                            auth = auth,
+                            onNavigateToLogin = {
+                                navController.navigate("login") { popUpTo("login") { inclusive = true } }
+                            }
+                        )
+                    }
+
+                    composable("profile") {
+                        LaunchedEffect(Unit) { GlobalPisoIdHolder.updatePisoId(null) }
+                        if (auth.currentUser == null) {
+                            LaunchedEffect(Unit) {
+                                navController.navigate("login") { popUpTo("profile") { inclusive = true } }
+                            }
+                        } else {
+                            ProfileScreen(
+                                auth = auth,
+                                onLogout = {
+                                    auth.signOut()
+                                    GlobalPisoIdHolder.updatePisoId(null)
+                                    navController.navigate("login") {
+                                        popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                                        launchSingleTop = true
                                     }
+                                },
+                                onNavigateToJoinPiso = { navController.navigate("join_piso") },
+                                onNavigateToCreatePiso = { navController.navigate("create_piso") },
+                                onNavigateToPisoHome = { pisoId ->
+                                    GlobalPisoIdHolder.updatePisoId(pisoId)
+                                    navController.navigate("piso_home/$pisoId")
                                 }
                             )
                         }
                     }
 
-                    composable("register") {
-                        RegisterScreen(
-                            auth = auth,
-                            onNavigateToLogin = {
-                                // Vuelve a login, limpiando el stack para no volver a register
-                                navController.navigate("login") {
-                                    popUpTo("login") { inclusive = true }
-                                }
-                            }
-                        )
+                    composable("join_piso") {
+                        LaunchedEffect(Unit) { GlobalPisoIdHolder.updatePisoId(null) }
+                        if (auth.currentUser == null) { /* Redirigir a login */ }
+                        else { JoinPisoScreen(auth = auth, navController = navController) }
                     }
+
+                    composable("create_piso") {
+                        LaunchedEffect(Unit) { GlobalPisoIdHolder.updatePisoId(null) }
+                        if (auth.currentUser == null) { /* Redirigir a login */ }
+                        else { CreatePisoScreen(auth = auth, navController = navController) }
+                    }
+
 
                     composable(
                         route = "piso_home/{pisoId}",
                         arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
                     ) { backStackEntry ->
-                        val pisoId = backStackEntry.arguments?.getString("pisoId")
-                        if (pisoId != null && auth.currentUser != null) {
-                            Log.d("MainActivity", "Displaying HomeScreen for pisoId: $pisoId")
-                            // --- Pasa navController y pisoId a HomeScreen ---
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        LaunchedEffect(pisoIdArg) { if (pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+
+                        if (pisoIdArg != null && auth.currentUser != null) {
                             HomeScreen(
-                                navController = navController, // Pasar el NavController
-                                pisoId = pisoId,               // Pasar el pisoId extraído
-                                auth = auth,                   // <-- AÑADIR: Pasar la instancia auth de MainActivity
-                                onLogout = {                   // <-- AÑADIR: Definir la acción de logout
+                                navController = navController,
+                                pisoId = pisoIdArg,
+                                auth = auth,
+                                onLogout = {
                                     auth.signOut()
+                                    GlobalPisoIdHolder.updatePisoId(null)
                                     navController.navigate("login") {
                                         popUpTo(navController.graph.startDestinationId) { inclusive = true }
                                         launchSingleTop = true
                                     }
                                 }
                             )
-                            // --- Fin Pasar ---
                         } else {
-                            Log.w("MainActivity", "PisoId is null or user not logged in, redirecting to login")
+                            Log.w("MainActivity", "PisoId is null or user not logged in for piso_home, redirecting to login")
                             LaunchedEffect(Unit) {
                                 navController.navigate("login") {
                                     popUpTo(navController.graph.startDestinationId) { inclusive = true }
@@ -113,150 +185,104 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    composable("profile") {
-                        // Asegúrate de que el usuario esté autenticado para ver el perfil
-                        if (auth.currentUser == null) {
-                            // Si por alguna razón llega aquí sin estar logueado, vuelve a login
-                            LaunchedEffect(Unit) {
-                                navController.navigate("login") {
-                                    popUpTo("profile") { inclusive = true }
-                                }
-                            }
-                        } else {
-                            ProfileScreen(
-                                auth = auth,
-                                onLogout = {
-                                    // Cierra sesión y vuelve a login, limpiando el stack
-                                    auth.signOut() // Asegúrate que signOut se llama antes de navegar
-                                    navController.navigate("login") {
-                                        popUpTo("profile") { inclusive = true }
-                                    }
-                                },
-                                onNavigateToJoinPiso = { navController.navigate("join_piso") },
-                                onNavigateToCreatePiso = { navController.navigate("create_piso") },
-                                onNavigateToPisoHome = { pisoId ->
-                                    navController.navigate("piso_home/$pisoId")
-                                }
-                            )
-                        }
-                    }
-
-                    composable("join_piso") {
-                        // Solo accesible si está logueado
-                        if (auth.currentUser == null) {
-                            LaunchedEffect(Unit) {
-                                navController.navigate("login") {
-                                    popUpTo("join_piso") { inclusive = true }
-                                }
-                            }
-                        } else {
-                            JoinPisoScreen(
-                                auth = auth,
-                                navController = navController
-                            )
-                        }
-                    }
-
                     composable(
-                        route = "create_task/{pisoId}", // Ruta que espera el ID del piso
-                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
-                    ) { backStackEntry ->
-                        val pisoId = backStackEntry.arguments?.getString("pisoId")
-                        val creatorUid = auth.currentUser?.uid // Obtener UID del usuario actual
-                        if (pisoId != null && creatorUid != null) {
-                            CreateTaskScreen(
-                                navController = navController,
-                                pisoId = pisoId,
-                                creatorUid = creatorUid
-                            )
-                        } else {
-                            // Redirigir o mostrar error si falta pisoId o el usuario no está logueado
-                            Log.e("Nav", "Cannot navigate to CreateTaskScreen: pisoId=$pisoId, creatorUid=$creatorUid")
-                            // Quizás navController.popBackStack() o navegar a login
-                        }
-                    }
-
-                    // Ruta placeholder para la pantalla de crear piso
-                    composable("create_piso") {
-                        if (auth.currentUser == null) {
-                            LaunchedEffect(Unit) {
-                                navController.navigate("login") {
-                                    popUpTo("create_piso") { inclusive = true }
-                                }
-                            }
-                        } else {
-                            // Reemplaza esto con tu pantalla real cuando la tengas
-                            // CreatePisoScreen(auth = auth, navController = navController)
-                            CreatePisoScreen(auth = auth, navController = navController) // Placeholder
-                        }
-                    }
-
-                    composable(
-                        route = "expenses_screen/{pisoId}",
+                        route = "create_task/{pisoId}",
                         arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
                     ) { backStackEntry ->
                         val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
-                        if (pisoIdArg != null && auth.currentUser != null) {
-                            ExpensesScreen(
-                                pisoId = pisoIdArg,
-                                navController = navController,
-                                auth = auth
-                            )
-                        } else {
-                            LaunchedEffect(Unit) { navController.popBackStack() }
-                        }
+                        val creatorUid = auth.currentUser?.uid
+                        LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+                        if (pisoIdArg != null && creatorUid != null) {
+                            CreateTaskScreen(navController = navController, pisoId = pisoIdArg, creatorUid = creatorUid)
+                        } else { LaunchedEffect(Unit) { navController.popBackStack() } }
                     }
 
+                    composable(
+                        route = "chat/{pisoId}",
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+                        if (pisoIdArg != null && auth.currentUser != null) {
+                            ChatScreen(pisoId = pisoIdArg, auth = auth, navController = navController)
+                        } else { LaunchedEffect(Unit) { navController.popBackStack() } }
+                    }
+
+                    composable(
+                        route = "expenses_screen/{pisoId}", // Cambiado de expenses a expenses_screen si así lo tienes
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+                        if (pisoIdArg != null && auth.currentUser != null) {
+                            ExpensesScreen(pisoId = pisoIdArg, navController = navController, auth = auth)
+                        } else { LaunchedEffect(Unit) { navController.popBackStack() } }
+                    }
 
                     composable(
                         route = "create_expense/{pisoId}",
                         arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
                     ) { backStackEntry ->
                         val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
                         if (pisoIdArg != null && auth.currentUser != null) {
-                            CreateExpenseScreen(
-                                navController = navController,
-                                pisoId = pisoIdArg,
-                                auth = auth
-                            )
-                        } else {
-                            // Redirigir si no hay pisoId o usuario
-                            Log.e("Nav", "No se puede navegar a CreateExpenseScreen: pisoId=$pisoIdArg, user=${auth.currentUser}")
-                            LaunchedEffect(Unit) {
-                                navController.popBackStack() // O navegar a login
-                            }
-                        }
+                            CreateExpenseScreen(navController = navController, pisoId = pisoIdArg, auth = auth)
+                        } else { LaunchedEffect(Unit) { navController.popBackStack() } }
                     }
-                    // Dentro del NavHost en MainActivity.kt
-
-// ... otras rutas como login, register, profile, piso_home, etc.
 
                     composable(
-                        route = "chat/{pisoId}",
+                        route = "incidents_list_screen/{pisoId}",
                         arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
                     ) { backStackEntry ->
-                        val pisoId = backStackEntry.arguments?.getString("pisoId")
-                        if (pisoId != null && auth.currentUser != null) {
-                            Log.d("MainActivity", "Navigating to ChatScreen for pisoId: $pisoId")
-                            ChatScreen(
-                                pisoId = pisoId,
-                                auth = auth,
-                                navController = navController // <-- ASEGÚRATE DE PASARLO AQUÍ
-                            )
-                        }  else {
-                            // Si falta el pisoId o el usuario no está logueado, volver
-                            Log.w("MainActivity", "Cannot open ChatScreen: Missing pisoId or user not logged in. Redirecting.")
-                            LaunchedEffect(Unit) {
-                                // Decide a dónde redirigir, por ejemplo, a 'profile' o 'login'
-                                navController.popBackStack() // Simplemente vuelve atrás
-                                // o navController.navigate("login") { popUpTo(...) }
-                            }
-                        }
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+                        if (pisoIdArg != null && auth.currentUser != null) {
+                            IncidentsListScreen(navController = navController, pisoId = pisoIdArg, auth = auth)
+                        } else { LaunchedEffect(Unit) { navController.popBackStack() } }
                     }
 
-// ... resto de las rutas
+                    composable(
+                        route = "create_incident_screen/{pisoId}",
+                        arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                    ) { backStackEntry ->
+                        val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                        LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+                        if (pisoIdArg != null && auth.currentUser != null) {
+                            CreateIncidentScreen(navController = navController, pisoId = pisoIdArg, auth = auth)
+                        } else { LaunchedEffect(Unit) { navController.popBackStack() } }
+                    }
+                    // Aquí irían tus otras rutas como ShoppingListScreen si la tienes
+                    /*
+                   composable(
+                       route = "shopping_list_screen/{pisoId}", // Asumiendo una ruta similar
+                       arguments = listOf(navArgument("pisoId") { type = NavType.StringType })
+                   ) { backStackEntry ->
+                       val pisoIdArg = backStackEntry.arguments?.getString("pisoId")
+                       LaunchedEffect(pisoIdArg) { if(pisoIdArg != null) GlobalPisoIdHolder.updatePisoId(pisoIdArg) }
+                       if (pisoIdArg != null && auth.currentUser != null) {
+                           // ShoppingListScreen(navController = navController, pisoId = pisoIdArg, auth = auth) // Descomentar cuando tengas la pantalla
+                       } else { LaunchedEffect(Unit) { navController.popBackStack() } }
+                   }
+                   */
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        if (sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null) {
+            shakeDetector.start()
+            Log.d("MainActivity", "ShakeDetector started onResume")
+        } else {
+            Log.w("MainActivity", "Accelerometer not available, ShakeDetector not started.")
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        shakeDetector.stop()
+        Log.d("MainActivity", "ShakeDetector stopped onPause")
     }
 }

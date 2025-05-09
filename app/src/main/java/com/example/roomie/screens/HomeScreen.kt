@@ -35,6 +35,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.roomie.R // Asegúrate que tus recursos drawable estén aquí
 import com.example.roomie.screens.ui.theme.SyneFontFamily
+import androidx.compose.material.icons.filled.ReportProblem
 import com.google.firebase.Timestamp // Importar Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -388,20 +389,38 @@ fun HomeScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Image(
+                    Image( // Tu logo actual
                         painter = painterResource(id = R.drawable.roomielogonaranja),
                         contentDescription = "Roomie Logo",
                         modifier = Modifier.height(48.dp)
                     )
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = topAppBarColor),
+                navigationIcon = { // ICONO PARA INCIDENCIAS
+                    IconButton(onClick = {
+                        if (pisoId.isNotBlank()) {
+                            navController.navigate("incidents_list_screen/$pisoId")
+                        } else {
+                            // Manejar caso donde pisoId no está disponible
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("ID de piso no disponible.")
+                            }
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.ReportProblem, // O Icons.Outlined.ReportProblem
+                            contentDescription = "Ver Incidencias",
+                            tint = selectedIconColor // Amarillo
+                        )
+                    }
+                },
                 actions = {
-                    // Botón para volver a la selección de piso
+                    // Botón para volver a la selección de piso (el que ya tenías)
                     IconButton(onClick = {
                         Log.d("HomeScreen", "Navegando de vuelta a Profile")
                         navController.navigate("profile") {
                             popUpTo(navController.graph.findStartDestination().id) {
-                                inclusive = false
+                                inclusive = false // O true si quieres limpiar Profile también
                                 saveState = true
                             }
                             launchSingleTop = true
@@ -414,7 +433,7 @@ fun HomeScreen(
                             tint = selectedIconColor
                         )
                     }
-                    // Menú de perfil
+                    // Menú de perfil (el que ya tenías)
                     Box {
                         IconButton(onClick = { showProfileMenu = true }) {
                             Icon(Icons.Filled.AccountCircle, "Menú perfil", tint = selectedIconColor)

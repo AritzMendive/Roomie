@@ -14,4 +14,6 @@
     <string name="title_activity_expenses_screen">ExpensesScreen</string>
     <string name="title_activity_create_expense_screen">CreateExpenseScreen</string>
     <string name="title_activity_shopping_list_screen">ShoppingListScreen</string>
+    <string name="title_activity_incidents_list_screen">IncidentsListScreen</string>
+    <string name="title_activity_create_incident_screen">CreateIncidentScreen</string>
 </resources>
